@@ -34,7 +34,7 @@ class Bitfield:
 
                 s = self.bitfield[0]
                 l = self.bitfield[1] - self.bitfield[0] + 1
-        self.s = s
+        self.s = s + base
         self.l = l
 
     @property
@@ -68,5 +68,4 @@ class Bitfield:
         instance.write(value, self)
 
     def __call__(self, _func: Callable[[], None]):
-        # 实现装饰器功能
         return self
