@@ -4,6 +4,8 @@ from enum import Flag, auto
 class AccessMode(Flag):
     R = auto()
     W = auto()
+    # R_ONCE = auto()
+    # W_ONCE = auto()
 
     @property
     def is_readable(self) -> bool:

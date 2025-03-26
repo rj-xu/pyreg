@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import loguru
 
@@ -24,13 +24,28 @@ class Logger:
         self._logger = loguru.logger
 
     @property
-    def logger(self):
+    def logger(self) -> LoggerProtocol:
         return self._logger
 
     @logger.setter
-    def logger(self, logger: LoggerProtocol):
-        assert isinstance(loguru.logger, LoggerProtocol)
+    def logger(self, logger: Any):
+        assert isinstance(logger, LoggerProtocol)
         self._logger = logger
 
+    def trace(self, message: str) -> None:
+        return self._logger.trace(message)
 
-logger = Logger().logger
+    def debug(self, message: str) -> None:
+        return self._logger.debug(message)
+
+    def info(self, message: str) -> None:
+        return self._logger.info(message)
+
+    def warning(self, message: str) -> None:
+        return self._logger.warning(message)
+
+    def error(self, message: str) -> None:
+        return self._logger.error(message)
+
+
+logger = Logger()
