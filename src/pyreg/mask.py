@@ -1,90 +1,137 @@
-from dataclasses import KW_ONLY, InitVar, dataclass, field
+from dataclasses import dataclass, field
+from typing import Self, overload
 
 
-@dataclass
-class Mask:
-    mask: int
+class Uint32(int):
+    def __new__(cls, value: int | str, /):
+        if isinstance(value, str):
+            match value[:2]:
+                case "0b" | "0B":
+                    value = value[2:]
+                    base = 2
+                case "0o" | "0O":
+                    value = value[2:]
+                    base = 8
+                case "0x" | "0X":
+                    value = value[2:]
+                    base = 16
+                case _:
+                    base = 16
+            value = int(value, base)
+        assert value >= 0, "Hex must be positive"
+        self = super().__new__(cls, value)
+        return self
 
-    # @classmethod
-    # def bit(cls, b: int) -> Self:
-    #     return cls(1 << b)
+    def __str__(self) -> str:
+        if self < 2**32:
+            return f"{self:#010x}"
+        return f"{self:#x}"
 
-    # @classmethod
-    # def field(cls, s: int, l: int) -> Self:
-    #     return cls(((1 << l) - 1) << s)
+    def __contains__(self, mask: int, /) -> bool:
+        return mask & self == mask
 
-    # @classmethod
-    # def range(cls, r: list[int]) -> Self:
-    #     assert len(r) == 2
-    #     s, e = r
-    #     assert s <= e
-    #     l = e - s + 1
-    #     return cls(((1 << l) - 1) << s)
+    @overload
+    def __getitem__(self, sl: int, /) -> bool: ...
+    @overload
+    def __getitem__(self, sl: slice, /) -> int: ...
+    def __getitem__(self, sl: int | slice) -> int | bool:
+        if isinstance(sl, int):
+            if sl < 0:
+                sl += 32
+            assert 0 <= sl < 32
+            return bool((self >> sl) & 0x1)
+
+        step = sl.step or 1
+
+        assert step != 0
+        start, stop = (0, 32) if step > 0 else (31, -1)
+
+        if start < 0:
+            start += 32
+        if stop < 0:
+            stop += 32
+
+        result = 0
+        bits = list(range(start, stop, step))
+
+        if step < 0:
+            bits = sorted(bits, reverse=True)
+
+        for i, b in enumerate(bits):
+            result |= ((self >> b) & 0x1) << i
+
+        return result
+
+
+class Mask(Uint32):
+    @classmethod
+    def bit(cls, b: int) -> Self:
+        return cls(1 << b)
+
+    @classmethod
+    def field(cls, s: int, l: int) -> Self:
+        return cls(((1 << l) - 1) << s)
+
+    @classmethod
+    def range(cls, s: int, e: int) -> Self:
+        assert s < e
+        l = e - s + 1
+        return cls(((1 << l) - 1) << s)
 
     def get(self, val: int) -> int:
-        return val & self.mask
+        return val & self
 
     def set(self, val: int) -> int:
-        return val | self.mask
+        return val | self
 
     def clear(self, val: int) -> int:
-        return val & ~self.mask
+        return val & ~self
 
     def toggle(self, val: int) -> int:
-        return val ^ self.mask
+        return val ^ self
 
     def is_set(self, val: int) -> bool:
-        return (val & self.mask) == self.mask
+        return (val & self) == self
 
     def is_clear(self, val: int) -> bool:
-        return (val & self.mask) == self.mask
-
-
-type BitRangeT = int | tuple[int, int] | list[int]
+        return (val & self) == 0
 
 
 @dataclass
-class BitRange(Mask):
-    bitfield: InitVar[BitRangeT]
-    _: KW_ONLY
-    base: InitVar[int] = 0
-
+class BitMask(Mask):
     s: int = field(init=False)
     l: int = field(init=False)
-    mask: int = field(init=False)
 
-    def __post_init__(self, bitfield: BitRangeT, base: int):
-        match bitfield:
-            case int():
-                s = bitfield
-                l = 1
-            case tuple():
-                if len(bitfield) != 2:
-                    raise ValueError
-                s = bitfield[0]
-                l = bitfield[1]
-            case list():
-                if len(bitfield) != 2 or bitfield[0] > bitfield[1]:
-                    raise ValueError
+    def __new__(cls, s: int | tuple[int, int], l: int = 1, /, *, base: int = 0):
+        if isinstance(s, tuple):
+            s, e = s
+            assert s < e
+            l = e - s + 1
+        s += base
 
-                s = bitfield[0]
-                l = bitfield[1] - bitfield[0] + 1
-        self.s = s + base
+        assert s >= 0
+        assert l > 0
+
+        mask = ((1 << l) - 1) << s
+        self = super().__new__(cls, mask)
+        self.s = s
         self.l = l
-        self.mask = ((1 << l) - 1) << s
-
-    def get(self, val: int) -> int:
-        return val & self.mask
-
-    def set(self, val: int) -> int:
-        return val | self.mask
+        return self
 
     @property
-    def tuple(self) -> tuple[int, int]:
-        return (self.s, self.l)
+    def s_l(self) -> tuple[int, int]:
+        return self.s, self.l
 
     def get_field(self, val: int) -> int:
         return (val >> self.s) & ((1 << self.l) - 1)
 
     def set_field(self, val: int, v: int) -> int:
-        return (val & ~self.mask) | ((v & ((1 << self.l) - 1)) << self.s)
+        return (val & ~self) | ((v & ((1 << self.l) - 1)) << self.s)
+
+
+mask = Uint32(0xCAFEBABE)
+
+print(mask[31])  # 访问最高位 → True
+print(mask[8:16])  # 获取8-15位 → 0xBE
+print(mask[24:16:-1])  # 逆序获取24-17位 → 0xCA
+print(mask[::-4])  # 每4位取反序 → 计算结果...

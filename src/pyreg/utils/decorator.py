@@ -1,6 +1,20 @@
 import time
+import warnings
 from functools import wraps
 from typing import Callable
+
+
+def deprecated(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        warnings.warn(
+            f"'{func.__name__}' is deprecated and will be removed in a future version",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 def singleton[T, **P](cls: type[T]):
@@ -37,7 +51,7 @@ def retry(max_attempts: int = 3, delay: float = 0.1):
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:
+                except Exception:
                     if attempt == max_attempts - 1:
                         raise
                     time.sleep(delay)

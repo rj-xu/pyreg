@@ -1,10 +1,11 @@
-from dataclasses import KW_ONLY, dataclass
+from dataclasses import KW_ONLY, dataclass, field
 from enum import IntFlag
+from typing import Any
 
-from .access import AccessMode
-from .bit_field import BitRange
-from .device import Device, DeviceTable
+from .access import Access
+from .device import Device, current_device
 from .endian import Endian
+from .field import BitMask
 from .log import logger
 from .mask import BitRangeT, Mask
 
@@ -23,11 +24,11 @@ class Reg:
     addr: int
     size: int = 4
     _: KW_ONLY
-    mode: AccessMode = AccessMode.R | AccessMode.W
+    mode: Access = Access.R | Access.W
     default: bytes = b"\x00\x00\x00\x00"
     endian: Endian = Endian.LITTLE
     width: int = 4
-    device: Device = DeviceTable.X3N.value
+    device: Device = field(default_factory=lambda: current_device.value)
 
     def check_read(self) -> None:
         if not self.mode.is_readable:
@@ -37,92 +38,122 @@ class Reg:
         if not self.mode.is_writable:
             raise ValueError
 
-    def read(
-        self,
-        bf: BitRangeT | BitRange | None = None,
-        # set_mask: int | None = None,
-        # clear_mask: int | None = None,
-    ) -> int:
+    def read(self, bf: BitRangeT | BitMask | None = None) -> int:
         self.check_read()
 
-        val = self.device.value.read(self.addr, self.size)
+        val = self.device.read(self.addr, self.size)
+        val = self.endian.bytes_to_int(val)
 
-        # if set_mask and not Mask(set_mask).is_set(val):
-        #     raise RegSetError(f"Reg {self.addr:#4x} not set")
-        # if clear_mask and not Mask(clear_mask).is_clear(val):
-        #     raise RegClearError(f"Reg {self.addr:#4x} not clear")
         if bf:
-            if not isinstance(bf, BitRange):
-                bf = BitRange(bf)
+            if not isinstance(bf, BitMask):
+                bf = BitMask(bf)
             val = bf.get_field(val)
-
-        if self.endian.is_big:
-            val = Endian.BIG.int_to_int(val)
 
         logger.trace(f"Read Reg: {self.addr:#10x} {val:#04x}")
 
         return val
 
+    def check(
+        self,
+        bf: BitRangeT | BitMask | None = None,
+        set_mask: int | None = None,
+        clear_mask: int | None = None,
+    ) -> tuple[int, bool, bool]:
+        self.check_read()
+
+        val = self.device.read(self.addr, self.size)
+        val = self.endian.bytes_to_int(val)
+
+        logger.trace(f"Read Reg: {self.addr:#10x} {val:#04x}")
+
+        is_set = True
+        is_clear = True
+        if set_mask is not None and not Mask(set_mask).is_set(val):
+            logger.warning(f"Reg {self.addr:#4x} not set")
+            is_set = False
+        if clear_mask is not None and not Mask(clear_mask).is_clear(val):
+            logger.warning(f"Reg {self.addr:#4x} not clear")
+            is_clear = False
+        if bf is not None:
+            if not isinstance(bf, BitMask):
+                bf = BitMask(bf)
+            val = bf.get_field(val)
+
+        logger.trace(f"Check Reg: {self.addr:#10x}={val:#04x}, {is_set=}, {is_clear=}")
+
+        return val, is_set, is_clear
+
     def read_bytes(self, size: int | None = None) -> bytes:
         self.check_read()
         size = size or self.size
-        b = self.device.value.burst_read(self.addr, size)
+        b = self.device.burst_read(self.addr, size)
         if self.endian.is_big:
             return self.endian.bytes_to_bytes(b)
         return b
 
-    def write(
-        self,
-        val: int = 0,
-        bf: BitRangeT | BitRange | None = None,
-        set_mask: int | None = None,
-        clear_mask: int | None = None,
-    ) -> None:
+    def write(self, val: int = 0) -> None:
         self.check_write()
 
-        if bf or set_mask or clear_mask:
-            rv = self.read()
-            if bf:
-                if not isinstance(bf, BitRange):
-                    bf = BitRange(bf)
-                rv = bf.set_field(rv, val)
-            if set_mask:
-                rv = Mask(set_mask).set(rv)
-            if clear_mask:
-                rv = Mask(clear_mask).clear(rv)
-            val = rv
-
-        if self.endian.is_big:
-            val = Endian.BIG.bytes_to_int(bytes(val))
-
         logger.trace(f"Write Reg {self.addr:#010x}: {val:#04x}")
+        b = self.endian.int_to_bytes(val, self.size)
+        return self.device.write(self.addr, b)
 
-        return self.device.value.write(self.addr, val, self.size)
+    def modify(
+        self,
+        val: int = 0,
+        bf: BitRangeT | BitMask | None = None,
+        set_mask: int | None = None,
+        clear_mask: int | None = None,
+    ):
+        self.check_read()
+        self.check_write()
+
+        rv = self.read()
+        logger.trace(f"Read Reg: {self.addr:#10x} {rv:#04x}")
+
+        if bf is not None:
+            if not isinstance(bf, BitMask):
+                bf = BitMask(bf)
+            rv = bf.set_field(rv, val)
+        if set_mask is not None:
+            rv = Mask(set_mask).set(rv)
+        if clear_mask is not None:
+            rv = Mask(clear_mask).clear(rv)
+        val = rv
+
+        logger.trace(f"Modify Reg {self.addr:#010x}: {val:#04x}")
+        b = self.endian.int_to_bytes(val, self.size)
+        return self.device.write(self.addr, b)
 
     def write_bytes(self, vals: bytes | bytearray) -> None:
         assert len(vals) <= self.size
         if len(vals) != self.size:
             logger.warning(f"Write only {len(vals)} bytes for Reg {self.addr} ")
-        self.device.value.burst_write(self.addr, vals)
+        self.device.burst_write(self.addr, vals)
 
 
 @dataclass
 class RegRo(Reg):
-    mode = AccessMode.R
+    mode = Access.R
 
 
 @dataclass
 class RegWo(Reg):
-    mode = AccessMode.W
+    mode = Access.W
 
 
 @dataclass
 class RegRw(Reg):
-    mode = AccessMode.R | AccessMode.W
+    mode = Access.R | Access.W
 
 
 @dataclass
-class Flags[T: IntFlag](RegRo):
+class RegRsvd(Reg):
+    mode = Access(0)
+
+
+@dataclass
+class RegFlags[T: IntFlag](RegRo):
     @property
     def flags(self) -> T:
         val = self.read()
@@ -130,7 +161,9 @@ class Flags[T: IntFlag](RegRo):
         return enum_type(val)
 
     def is_set(self, flag: T) -> bool:
-        return bool(self.flags & flag)
+        val = self.read()
+        return flag & val == flag
 
     def is_clear(self, flag: T) -> bool:
-        return not self.is_set(flag)
+        val = self.read()
+        return flag & val == 0
