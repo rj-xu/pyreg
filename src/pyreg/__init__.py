@@ -1,12 +1,12 @@
 # noqa: N999
 from . import utils
 from .bit import Bit, Bits, Byte, Bytes
-from .bit_field import BitBool, BitField, BitFieldBe, EnumField, Reserved, Trigger
 from .device import IptDevice
 from .endian import Endian
+from .field import BitBool, BitEnum, BitField, BitRsvd, BitTrigger
 from .log import logger
-from .mask import BitRange, Mask
-from .reg import Flags, Reg, RegRo, RegRw, RegWo
+from .mask import Mask
+from .reg import Reg, RegFlags, RegRo, RegRsvd, RegRw, RegWo
 
 __version__ = "1.0.0"
 __description__ = "A Python package for register operations."
@@ -22,22 +22,21 @@ __all__ = [
     "Bit",
     "BitBool",
     "BitField",
-    "BitFieldBe",
-    "BitRange",
     "Bits",
     "Byte",
     "Bytes",
     "Endian",
-    "EnumField",
-    "Flags",
+    "BitEnum",
     "IptDevice",
     "Mask",
     "Reg",
     "RegRo",
     "RegRw",
     "RegWo",
-    "Reserved",
-    "Trigger",
+    "BitRsvd",
+    "BitTrigger",
+    "RegFlags",
+    "RegRsvd",
     "logger",
     "utils",
 ]

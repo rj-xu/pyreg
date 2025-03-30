@@ -1,75 +1,13 @@
-from dataclasses import dataclass, field
-from typing import Self, overload
+from dataclasses import InitVar, dataclass, field
+from typing import Self
 
 
-class Uint32(int):
-    def __new__(cls, value: int | str, /):
-        if isinstance(value, str):
-            match value[:2]:
-                case "0b" | "0B":
-                    value = value[2:]
-                    base = 2
-                case "0o" | "0O":
-                    value = value[2:]
-                    base = 8
-                case "0x" | "0X":
-                    value = value[2:]
-                    base = 16
-                case _:
-                    base = 16
-            value = int(value, base)
-        assert value >= 0, "Hex must be positive"
-        self = super().__new__(cls, value)
-        return self
-
-    def __str__(self) -> str:
-        if self < 2**32:
-            return f"{self:#010x}"
-        return f"{self:#x}"
-
-    def __contains__(self, mask: int, /) -> bool:
-        return mask & self == mask
-
-    @overload
-    def __getitem__(self, sl: int, /) -> bool: ...
-    @overload
-    def __getitem__(self, sl: slice, /) -> int: ...
-    def __getitem__(self, sl: int | slice) -> int | bool:
-        if isinstance(sl, int):
-            if sl < 0:
-                sl += 32
-            assert 0 <= sl < 32
-            return bool((self >> sl) & 0x1)
-
-        step = sl.step or 1
-
-        assert step != 0
-        start, stop = (0, 32) if step > 0 else (31, -1)
-
-        if start < 0:
-            start += 32
-        if stop < 0:
-            stop += 32
-
-        result = 0
-        bits = list(range(start, stop, step))
-
-        if step < 0:
-            bits = sorted(bits, reverse=True)
-
-        for i, b in enumerate(bits):
-            result |= ((self >> b) & 0x1) << i
-
-        return result
-
-
-class Mask(Uint32):
-    @classmethod
-    def bit(cls, b: int) -> Self:
-        return cls(1 << b)
+@dataclass
+class Mask:
+    mask: int
 
     @classmethod
-    def field(cls, s: int, l: int) -> Self:
+    def field(cls, s: int, l: int = 1) -> Self:
         return cls(((1 << l) - 1) << s)
 
     @classmethod
@@ -79,59 +17,64 @@ class Mask(Uint32):
         return cls(((1 << l) - 1) << s)
 
     def get(self, val: int) -> int:
-        return val & self
+        return val & self.mask
 
     def set(self, val: int) -> int:
-        return val | self
+        return val | self.mask
 
     def clear(self, val: int) -> int:
-        return val & ~self
+        return val & ~self.mask
 
     def toggle(self, val: int) -> int:
-        return val ^ self
+        return val ^ self.mask
 
     def is_set(self, val: int) -> bool:
-        return (val & self) == self
+        return (val & self.mask) == self.mask
 
     def is_clear(self, val: int) -> bool:
-        return (val & self) == 0
+        return (val & self.mask) == 0
+
+
+type BitT = int | tuple[int, int] | list[int]
 
 
 @dataclass
 class BitMask(Mask):
+    mask: int = field(init=False)
     s: int = field(init=False)
     l: int = field(init=False)
 
-    def __new__(cls, s: int | tuple[int, int], l: int = 1, /, *, base: int = 0):
-        if isinstance(s, tuple):
-            s, e = s
-            assert s < e
-            l = e - s + 1
+    bit: InitVar[BitT]
+    base: InitVar[int] = 0
+
+    def __post_init__(self, bit: BitT, base: int) -> None:
+        match bit:
+            case int():
+                s = bit
+                l = 1
+            case tuple():
+                s, l = bit
+            case list():
+                assert len(bit) == 2
+                s, e = bit[0], bit[1]
+                l = e - s + 1
+
         s += base
 
         assert s >= 0
         assert l > 0
 
         mask = ((1 << l) - 1) << s
-        self = super().__new__(cls, mask)
+        super().__init__(mask)
         self.s = s
         self.l = l
-        return self
 
     @property
-    def s_l(self) -> tuple[int, int]:
+    def sl(self) -> tuple[int, int]:
         return self.s, self.l
 
     def get_field(self, val: int) -> int:
         return (val >> self.s) & ((1 << self.l) - 1)
 
     def set_field(self, val: int, v: int) -> int:
-        return (val & ~self) | ((v & ((1 << self.l) - 1)) << self.s)
-
-
-mask = Uint32(0xCAFEBABE)
-
-print(mask[31])  # 访问最高位 → True
-print(mask[8:16])  # 获取8-15位 → 0xBE
-print(mask[24:16:-1])  # 逆序获取24-17位 → 0xCA
-print(mask[::-4])  # 每4位取反序 → 计算结果...
+        return (val & ~self.mask) | ((v & ((1 << self.l) - 1)) << self.s)

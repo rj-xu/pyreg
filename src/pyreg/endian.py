@@ -2,7 +2,7 @@ from enum import StrEnum
 from typing import Literal, Sequence
 
 type ByteT = Sequence[int] | bytes | bytearray
-type DataWidthT = Literal[1, 2, 4, 8]
+type BitWidthT = Literal[8, 16, 32, 64]
 
 
 class Endian(StrEnum):
@@ -19,7 +19,9 @@ class Endian(StrEnum):
     def bytes_to_list(self, b: ByteT, width: int = 4) -> list[int]:
         if len(b) % width != 0:
             raise ValueError(f"Invalid bytes length: {len(b)}")
-        return [self.bytes_to_int(bytes(b[i : i + width])) for i in range(0, len(b), width)]
+        return [
+            self.bytes_to_int(bytes(b[i : i + width])) for i in range(0, len(b), width)
+        ]
 
     def bytes_to_bytes(self, b: ByteT) -> bytes:
         return bytes(b[::-1])

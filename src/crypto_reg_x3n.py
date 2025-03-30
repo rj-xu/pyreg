@@ -2,9 +2,19 @@ import time
 from dataclasses import dataclass
 from enum import Enum, IntEnum, IntFlag, auto
 
-from Libs.loglib import g_logger as logger
-
-from .pyreg import BitBool, BitEnum, BitField, BitRsvd, BitTrigger, Endian, RegFlags, RegRo, RegRsvd, RegRw
+from pyreg import (
+    BitBool,
+    BitEnum,
+    BitField,
+    BitRsvd,
+    BitTrigger,
+    Endian,
+    RegFlags,
+    RegRo,
+    RegRsvd,
+    RegRw,
+    logger,
+)
 
 
 class CryptoEvent(IntEnum):
@@ -24,7 +34,7 @@ class CryptoEvent(IntEnum):
 
         is_done = False
         for _ in range(100):
-            state = CryptoReg.CRYPTO_STATE.value.flags
+            state = CryptoReg.CRYPTO_STATE.value.flags()
             if CryptoState.EVENT_DONE in state:
                 if CryptoState.EVENT_STATUS not in state:
                     is_done = True

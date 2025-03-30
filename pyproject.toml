@@ -9,3 +9,10 @@ dependencies = []
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "M", "N", "Q", "S", "T"]
+
+
+[tool.pyright]
+typeCheckingMode = "strict"

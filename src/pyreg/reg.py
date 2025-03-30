@@ -1,13 +1,12 @@
 from dataclasses import KW_ONLY, dataclass, field
 from enum import IntFlag
-from typing import Any
+from typing import get_args, get_origin
 
 from .access import Access
 from .device import Device, current_device
 from .endian import Endian
-from .field import BitMask
 from .log import logger
-from .mask import BitRangeT, Mask
+from .mask import BitMask, BitT, Mask
 
 
 class RegError(Exception): ...
@@ -38,16 +37,14 @@ class Reg:
         if not self.mode.is_writable:
             raise ValueError
 
-    def read(self, bf: BitRangeT | BitMask | None = None) -> int:
+    def read(self, bit: BitT | None = None) -> int:
         self.check_read()
 
         val = self.device.read(self.addr, self.size)
         val = self.endian.bytes_to_int(val)
 
-        if bf:
-            if not isinstance(bf, BitMask):
-                bf = BitMask(bf)
-            val = bf.get_field(val)
+        if bit is not None:
+            val = BitMask(bit).get_field(val)
 
         logger.trace(f"Read Reg: {self.addr:#10x} {val:#04x}")
 
@@ -55,7 +52,7 @@ class Reg:
 
     def check(
         self,
-        bf: BitRangeT | BitMask | None = None,
+        bit: BitT | None = None,
         set_mask: int | None = None,
         clear_mask: int | None = None,
     ) -> tuple[int, bool, bool]:
@@ -74,10 +71,8 @@ class Reg:
         if clear_mask is not None and not Mask(clear_mask).is_clear(val):
             logger.warning(f"Reg {self.addr:#4x} not clear")
             is_clear = False
-        if bf is not None:
-            if not isinstance(bf, BitMask):
-                bf = BitMask(bf)
-            val = bf.get_field(val)
+        if bit is not None:
+            val = BitMask(bit).get_field(val)
 
         logger.trace(f"Check Reg: {self.addr:#10x}={val:#04x}, {is_set=}, {is_clear=}")
 
@@ -101,7 +96,7 @@ class Reg:
     def modify(
         self,
         val: int = 0,
-        bf: BitRangeT | BitMask | None = None,
+        bit: BitT | None = None,
         set_mask: int | None = None,
         clear_mask: int | None = None,
     ):
@@ -111,10 +106,8 @@ class Reg:
         rv = self.read()
         logger.trace(f"Read Reg: {self.addr:#10x} {rv:#04x}")
 
-        if bf is not None:
-            if not isinstance(bf, BitMask):
-                bf = BitMask(bf)
-            rv = bf.set_field(rv, val)
+        if bit is not None:
+            rv = BitMask(bit).set_field(rv, val)
         if set_mask is not None:
             rv = Mask(set_mask).set(rv)
         if clear_mask is not None:
@@ -154,16 +147,17 @@ class RegRsvd(Reg):
 
 @dataclass
 class RegFlags[T: IntFlag](RegRo):
-    @property
     def flags(self) -> T:
         val = self.read()
-        enum_type: type[T] = self.__orig_class__.__args__[0]  # type: ignore
+        # enum_type: type[T] = self.__orig_class__.__args__[0]  # type: ignore
+        origin = get_origin(type(self))
+        enum_type = get_args(origin)[0]
         return enum_type(val)
 
     def is_set(self, flag: T) -> bool:
         val = self.read()
-        return flag & val == flag
+        return flag.value & val == flag
 
     def is_clear(self, flag: T) -> bool:
         val = self.read()
-        return flag & val == 0
+        return flag.value & val == 0

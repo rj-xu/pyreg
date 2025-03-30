@@ -1,16 +1,27 @@
 from enum import Flag, auto
 
 
-class AccessMode(Flag):
+class Access(Flag):
     R = auto()
     W = auto()
-    # R_ONCE = auto()
-    # W_ONCE = auto()
 
     @property
     def is_readable(self) -> bool:
-        return AccessMode.R in self
+        return Access.R in self
 
     @property
     def is_writable(self) -> bool:
-        return AccessMode.W in self
+        return Access.W in self
+
+
+class Once(Flag):
+    R = auto()
+    W = auto()
+
+    @property
+    def is_read_once(self) -> bool:
+        return Once.R in self
+
+    @property
+    def is_write_once(self) -> bool:
+        return Once.W in self

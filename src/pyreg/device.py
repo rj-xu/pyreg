@@ -27,10 +27,10 @@ class Device(ABC):
 
 @dataclass
 class DummyDevice(Device):
-    def read(self, addr: int, size: int) -> bytes:  # noqa: ARG002
+    def read(self, addr: int, size: int) -> bytes:
         return b"\xff" * size
 
-    def write(self, addr: int, val: ByteT) -> None:  # noqa: ARG002
+    def write(self, addr: int, val: ByteT) -> None:
         return None
 
 
@@ -47,14 +47,18 @@ class IptDevice(Device):
         # NOTE: dataWidth won't work!!!
         b = bytearray(size)
         for i in range(size):
-            b[i], rs = self.ipt.read(i2cid=self.device_id, addr=addr + i, dataWidth=Bits.PER_BYTE)
+            b[i], rs = self.ipt.read(
+                i2cid=self.device_id, addr=addr + i, dataWidth=Bits.PER_BYTE
+            )
             if rs is False:
                 raise RuntimeError
         return bytes(b)
 
     def write(self, addr: int, val: ByteT) -> None:
         for i, v in enumerate(val):
-            ret = self.ipt.write(i2cid=self.device_id, addr=addr + i, dat=v, dataWidth=Bits.PER_BYTE)
+            ret = self.ipt.write(
+                i2cid=self.device_id, addr=addr + i, dat=v, dataWidth=Bits.PER_BYTE
+            )
             if ret is False:
                 raise RuntimeError
 
