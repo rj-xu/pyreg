@@ -1,26 +1,15 @@
-from dataclasses import InitVar, dataclass, field
-from typing import Self
+from typing import NamedTuple, Self, overload
 
 
-@dataclass
-class Mask:
+class Mask(NamedTuple):
     mask: int
-
-    @classmethod
-    def field(cls, s: int, l: int = 1) -> Self:
-        return cls(((1 << l) - 1) << s)
-
-    @classmethod
-    def range(cls, s: int, e: int) -> Self:
-        assert s < e
-        l = e - s + 1
-        return cls(((1 << l) - 1) << s)
+    s: int = 0
 
     def get(self, val: int) -> int:
         return val & self.mask
 
-    def set(self, val: int) -> int:
-        return val | self.mask
+    def set(self, val: int, by: bool = True) -> int:  # noqa: FBT001, FBT002
+        return (val | self.mask) if by else self.clear(val)
 
     def clear(self, val: int) -> int:
         return val & ~self.mask
@@ -34,47 +23,58 @@ class Mask:
     def is_clear(self, val: int) -> bool:
         return (val & self.mask) == 0
 
+    def __or__(self, val: Self):
+        return Mask(self.mask | val.mask)
 
-type BitT = int | tuple[int, int] | list[int]
+    def __and__(self, val: Self):
+        return Mask(self.mask & val.mask)
 
+    def __xor__(self, val: Self):
+        return Mask(self.mask ^ val.mask)
 
-@dataclass
-class BitMask(Mask):
-    mask: int = field(init=False)
-    s: int = field(init=False)
-    l: int = field(init=False)
+    def __invert__(self):
+        return Mask(~self.mask)
 
-    bit: InitVar[BitT]
-    base: InitVar[int] = 0
+    def __lshift__(self, val: int):
+        return Mask(self.mask << val)
 
-    def __post_init__(self, bit: BitT, base: int) -> None:
-        match bit:
-            case int():
-                s = bit
-                l = 1
-            case tuple():
-                s, l = bit
-            case list():
-                assert len(bit) == 2
-                s, e = bit[0], bit[1]
-                l = e - s + 1
+    def __rshift__(self, val: int):
+        return Mask(self.mask >> val)
 
-        s += base
+    def extract(self, val: int) -> int:
+        return (val & self.mask) >> self.s
+
+    def insert(self, val: int, field: int) -> int:
+        return (val & ~self.mask) | ((field << self.s) & self.mask)
+
+    @classmethod
+    def new(cls, last_s: int | tuple[int, int] | None, l: int | None, *, byte: int):
+        if isinstance(last_s, tuple):
+            last, s = last_s
+            assert last > s
+            l = last - s + 1
+        elif last_s is None:
+            s = 0
+        else:
+            s = last_s
+
+        if l is None:
+            l = 1 if last_s is not None else 8
 
         assert s >= 0
-        assert l > 0
+        assert l >= 0
 
+        s += byte * 8
         mask = ((1 << l) - 1) << s
-        super().__init__(mask)
-        self.s = s
-        self.l = l
 
-    @property
-    def sl(self) -> tuple[int, int]:
-        return self.s, self.l
+        return cls(mask=mask, s=s)
 
-    def get_field(self, val: int) -> int:
-        return (val >> self.s) & ((1 << self.l) - 1)
 
-    def set_field(self, val: int, v: int) -> int:
-        return (val & ~self.mask) | ((v & ((1 << self.l) - 1)) << self.s)
+@overload
+def Bit(s: int | tuple[int, int], *, byte: int = 0) -> Mask: ...  # pylint: disable=invalid-name
+@overload
+def Bit(s: int, l: int, *, byte: int = 0) -> Mask: ...  # pylint: disable=invalid-name
+@overload
+def Bit(*, l: int | None = None, byte: int = 0) -> Mask: ...  # pylint: disable=invalid-name
+def Bit(s: int | tuple[int, int] | None = None, l: int | None = None, *, byte: int = 0) -> Mask:  # noqa: N802 # pylint: disable=invalid-name
+    return Mask.new(last_s=s, l=l, byte=byte)

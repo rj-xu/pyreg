@@ -1,8 +1,8 @@
 from enum import StrEnum
-from typing import Literal, Sequence
+from typing import TYPE_CHECKING
 
-type ByteT = Sequence[int] | bytes | bytearray
-type BitWidthT = Literal[8, 16, 32, 64]
+if TYPE_CHECKING:
+    from utils.types import Bytes, Width
 
 
 class Endian(StrEnum):
@@ -10,35 +10,54 @@ class Endian(StrEnum):
     LITTLE = "little"
 
     @property
-    def is_big(self):
-        return self.value == Endian.BIG
+    def is_be(self):
+        return self == Endian.BIG
 
-    def bytes_to_int(self, b: ByteT) -> int:
-        return int.from_bytes(bytes(b), byteorder=self.value, signed=False)
+    def bytes_to_int(self, b: Bytes) -> int:
+        return int.from_bytes(b, byteorder=self.value, signed=False)
 
-    def bytes_to_list(self, b: ByteT, width: int = 4) -> list[int]:
-        if len(b) % width != 0:
-            raise ValueError(f"Invalid bytes length: {len(b)}")
-        return [
-            self.bytes_to_int(bytes(b[i : i + width])) for i in range(0, len(b), width)
-        ]
+    def int_to_bytes(self, i: int, length: int = 4) -> bytes:
+        return i.to_bytes(length=length, byteorder=self.value, signed=False)
 
-    def bytes_to_bytes(self, b: ByteT) -> bytes:
-        return bytes(b[::-1])
+    @staticmethod
+    def int_to_int(i: int, *, width: Width = 32):
+        length = width // 8
+        return int.from_bytes(
+            int.to_bytes(
+                i,
+                length=length,
+                byteorder="little",
+                signed=False,
+            ),
+            byteorder="big",
+            signed=False,
+        )
 
-    def int_to_int(self, i: int, width: int = 4) -> int:
-        return self.bytes_to_int(self.int_to_bytes(i, width)[::-1])
+    @staticmethod
+    def bytes_to_bytes(b: bytes):
+        return b[::-1]
 
-    def int_to_bytes(self, i: int, width: int = 4) -> bytes:
-        return i.to_bytes(length=width, byteorder=self.value, signed=False)
+    @staticmethod
+    def align_bytes(i: int, *, width: Width = 32):
+        base = (i.bit_length() + 7) // 8
+        remainder = base % width
+        return base if remainder == 0 else base + (width - remainder)
 
-    def list_to_bytes(self, l: list[int], width: int = 4) -> bytes:
-        return b"".join([self.int_to_bytes(num, width) for num in l])
+    @staticmethod
+    def hex_to_bytes(hex_str: str) -> bytes:
+        return bytes.fromhex(hex_str)
 
-    @classmethod
-    def bits_to_bytes(cls, bits: int, aligned_width: int = 4):
-        assert bits >= 0
-        assert aligned_width >= 0
-        base = (bits + 7) // 8
-        remainder = base % aligned_width
-        return base if remainder == 0 else base + (aligned_width - remainder)
+    def hex_to_int(self, hex_str: str) -> int:
+        return self.bytes_to_int(bytes.fromhex(hex_str))
+
+    def bytes_to_list(self, b: bytes, *, width: Width) -> list[int]:
+        size = len(b)
+        length = width // 8
+
+        assert size % length == 0
+
+        return [self.bytes_to_int(b[i : i + length]) for i in range(0, size, length)]
+
+    def list_to_bytes(self, l: list[int], *, width: Width) -> bytes:
+        length = width // 8
+        return b"".join(self.int_to_bytes(num, length=length) for num in l)
